@@ -71,7 +71,7 @@ This script is a fork of [seflerZ/oneclick-gpu-pv](https://github.com/seflerZ/on
 4. **Follow Prompts**: Select your VM and GPU through the interactive dialogs
 
 ### Detailed Instructions
-For step-by-step instructions with screenshots and troubleshooting, see [USAGE.md](USAGE.md).
+For step-by-step instructions with screenshots and troubleshooting, see [usage.md](usage.md).
 
 ## Script Parameters
 
@@ -162,7 +162,7 @@ To utilize your GPU-P enabled VM for remote gaming:
 
 ### Getting Help
 - Check the [Issues](../../issues) section for known problems
-- Review [USAGE.md](USAGE.md) for detailed troubleshooting steps
+- Review [usage.md](usage.md) for detailed troubleshooting steps
 - Ensure all prerequisites are met before running
 - Include error messages, Windows version, and GPU model when reporting issues
 
