@@ -1,213 +1,266 @@
 # EZ-GPU-PV
-Easy GPU Partitioning for Hyper-V Virtual Machines
 
-## Overview
+> **Easy, Automated GPU Partitioning (GPU-P) & Reversal for Hyper-V Virtual Machines**
 
-EZ-GPU-PV is a streamlined PowerShell script that enables GPU Partitioning (GPU-P) on Hyper-V virtual machines. GPU-P allows you to share your host's GPU with virtual machines, enabling hardware acceleration for gaming, graphics-intensive applications, and AI workloads within VMs.
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](#-license)
+[![Platform: Windows](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-0078D6.svg)]()
+[![Hyper-V](https://img.shields.io/badge/Hyper--V-GPU--P-7F52FF.svg)]()
 
-## What is GPU Partitioning?
+---
 
-GPU Partitioning is a Microsoft Hyper-V feature that allows you to allocate portions of your physical GPU's resources to virtual machines. This enables:
-- Hardware-accelerated graphics in VMs
-- Gaming with near-native performance
-- AI/ML workloads with GPU acceleration
-- Graphics-intensive applications without full GPU passthrough
+## 📖 Overview
 
-## Key Improvements Since Forking
+**EZ-GPU-PV** is an interactive, beginner-friendly PowerShell wizard that automates **GPU Partitioning (GPU-P)** on Microsoft Hyper-V virtual machines. 
 
-This script is a fork of [seflerZ/oneclick-gpu-pv](https://github.com/seflerZ/oneclick-gpu-pv) with significant enhancements:
+GPU Partitioning splits your physical host GPU (NVIDIA or AMD) into shared partitions, allowing your Windows Virtual Machines to access true hardware graphics acceleration for gaming, video rendering, AI workloads, and remote desktop streaming—without losing GPU access on your host PC!
 
-### ✅ Code Quality Improvements
-- **Fixed PowerShell Standards**: Replaced unapproved verbs (`Prepare-VMForDriverInjection` → `Initialize-VMForDriverInjection`, `Inject-GpuDriver` → `Copy-GpuDriverPackage`)
-- **Clean Code Principles**: Restructured following Robert C. Martin's "Clean Code" guidelines
-- **Enhanced Error Handling**: Added robust error handling and user-friendly messages
-- **Type Safety**: Fixed parameter types and improved type consistency
+It also includes a **Reversal Wizard (`-Reverse`)** to easily undo GPU partitioning, clean up driver files inside the VM, and restore default Hyper-V settings with a single command.
 
-### ✅ Reliability Improvements
-- **Robust VM Management**: Added `-Force` flag to VM stop operations to prevent lock-related failures
-- **Better Session Management**: Improved PowerShell session handling with `try...finally` blocks for guaranteed cleanup
-- **Silent Error Handling**: Non-critical operations won't crash the script
-- **Timeout Protection**: Added VM boot timeouts to prevent indefinite hangs
-- **Error Recovery**: Graceful handling of user cancellations and credential issues
+---
 
-### ✅ Streamlined Focus
-- **Windows-Only**: Dropped Ubuntu/WSL support for better Windows optimization
-- **Simplified Workflow**: Cleaner, more intuitive user experience
-- **Better Documentation**: Comprehensive help and verbose output
+## ✨ Features
 
-### ✅ User Experience
-- **Interactive Selection**: Uses GridView for easy VM and GPU selection
-- **Progress Feedback**: Clear status messages throughout the process
-- **Safety Checks**: Validates prerequisites and provides helpful warnings
-- **Driver Management**: Smart detection and overwrite prompts for existing GPU drivers
-- **Verbose Logging**: Optional detailed progress information with `-Verbose` flag
+- 🎮 **Hardware GPU Acceleration:** Share your host GPU with virtual machines for high-performance gaming and compute.
+- 🧙 **Interactive Wizard:** Easy GridView selection for target VMs and host GPUs—no typing complex device instance IDs.
+- 🚗 **Automated Driver Injection:** Detects host GPU drivers, copies them into the VM's `HostDriverStore`, and generates a one-click setup script (`GPUPAdditionalSetup.bat`).
+- 🔄 **One-Click Reversal (`-Reverse`):** Easily remove GPU partitions, re-enable VM checkpoints, restore default MMIO memory space, and option to wipe host driver stores inside the VM.
+- 🛡️ **Fail-Safe & Robust:** Built-in boot timeout protection, automatic VM state handling, and proper session cleanup.
+- 🕹️ **Apollo & Moonlight Integration Ready:** Tailored for remote gaming via **Apollo** with built-in SudoVDA virtual display support.
 
-### 🔧 **Technical Improvements**
-- **Clean Code Architecture**: Following Robert C. Martin's principles with single-responsibility functions
-- **Parameter Type Safety**: Fixed all type conversion issues (strings vs numeric values)
-- **PowerShell Best Practices**: Proper cmdlet binding, parameter validation, and error handling
-- **Session Robustness**: Guaranteed cleanup of PowerShell sessions even during errors
-- **Encoding Fixes**: Resolved UTF-8 BOM issues in generated batch files
+---
 
-## Requirements
+## 📋 System Requirements
 
-### System Requirements
-- Windows 10/11 Pro, Enterprise, or Education (Hyper-V enabled)
-- A compatible GPU (most modern NVIDIA/AMD GPUs work)
-- Hyper-V Virtual Machine with Windows guest OS
-- Administrator privileges
+### Host Computer
+* **Operating System:** Windows 10 or Windows 11 (Pro, Enterprise, or Education editions). *Home edition does not support Hyper-V.*
+* **Hardware GPU:** Dedicated NVIDIA or AMD graphics card.
+* **Hyper-V:** Enabled and running.
+* **Privileges:** Administrator privileges on both host and VM.
 
-### Software Prerequisites
-- Hyper-V enabled and running
-- PowerShell 5.1 or higher
-- Windows guest VM with enhanced session mode disabled.
+### Guest Virtual Machine
+* **Guest OS:** Windows 10 or Windows 11.
+* **Generation:** Generation 2 VM recommended.
+* **Integration Services:** Enabled (specifically Heartbeat service).
 
-## Installation & Usage
+---
 
-### Quick Start
-1. **Download**: Get `ez-gpu-pv.ps1` from this repository
-2. **Unblock**: Right-click the file → Properties → Unblock (removes security warning)
-3. **Run as Administrator**: Right-click → "Run with PowerShell"
-4. **Follow Prompts**: Select your VM and GPU through the interactive dialogs
+## 🚀 Quick Start Guide (5 Minutes)
 
-### Detailed Instructions
-For step-by-step instructions with screenshots and troubleshooting, see [usage.md](usage.md).
+1. **Download:** Get `ez-gpu-pv.ps1` from this repository.
+2. **Unblock the Script:**
+   - Right-click `ez-gpu-pv.ps1` → select **Properties**.
+   - Check the **Unblock** box at the bottom → click **OK**.
+3. **Run as Administrator:**
+   - Right-click `ez-gpu-pv.ps1` → select **Run with PowerShell** (or run from an elevated PowerShell prompt).
+4. **Follow the Interactive Wizard:**
+   - Select your target VM from the pop-up list.
+   - Select your host GPU from the pop-up list.
+   - Enter your VM Administrator credentials when prompted.
+5. **Complete VM Setup:**
+   - Boot up your VM.
+   - Inside the VM, right-click `C:\GPUPAdditionalSetup.bat` and choose **Run as administrator**.
+   - Reboot the VM when completed. Done! 🎉
 
-## Script Parameters
+---
 
-The script supports several customization options:
+## 📝 Detailed Step-by-Step Setup
 
+### Step 1: Enable Hyper-V on Host
+
+If Hyper-V is not already enabled:
+1. Press `Win + R`, type `optionalfeatures.exe`, and press **Enter**.
+2. Check the box for **Hyper-V** (ensure both Management Tools and Platform are checked).
+3. Click **OK** and restart your computer when prompted.
+
+Alternatively, via PowerShell (Administrator):
 ```powershell
-.\ez-gpu-pv.ps1 -PartitionVram 200MB -PartitionEncode 200MB -PartitionDecode 200MB -PartitionCompute 200MB -VmBootTimeoutSeconds 600
+Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V -All
 ```
 
-- `PartitionVram`: VRAM allocation (default: 100MB)
-- `PartitionEncode`: Video encoding resources (default: 100MB)
-- `PartitionDecode`: Video decoding resources (default: 100MB)
-- `PartitionCompute`: General compute resources (default: 100MB)
-- `LowMmioSpace`: Low MMIO space (default: 1GB)
-- `HighMmioSpace`: High MMIO space (default: 32GB)
-- `VmBootTimeoutSeconds`: VM startup timeout (default: 300 seconds)
+---
 
-## Development History & Improvements
+### Step 2: Create & Prepare Your Virtual Machine
 
-This script evolved through extensive debugging and refactoring based on real-world usage:
+1. Open **Hyper-V Manager**.
+2. Click **New** → **Virtual Machine**.
+3. Configure the VM:
+   - **Generation:** Select **Generation 2**.
+   - **RAM:** Allocate at least 4GB (8GB+ recommended for gaming).
+   - **Networking:** Select **Default Switch**.
+   - **Virtual Hard Disk:** Create a VHDX (64GB+ recommended).
+4. Install Windows 10 or 11 on the VM and log in to set up an Administrator account.
+5. Ensure Integration Services are enabled:
+   - In Hyper-V Manager, right-click VM → **Settings** → **Integration Services** → Check all services (especially **Heartbeat**).
 
-### Version Evolution (6.1 → 6.5+)
-- **v6.1**: Initial syntax fixes and parameter type corrections
-- **v6.2**: PowerShell best practices implementation
-- **v6.3**: Enhanced error handling and session management
-- **v6.4**: Clean Code architecture with single-responsibility functions
-- **v6.5**: Driver overwrite prompts and improved user experience
+---
 
-### Key Issues Resolved
-1. **Parameter Type Conflicts**: Fixed string-to-numeric conversion errors for memory parameters
-2. **PowerShell Standards**: Corrected unapproved verbs and cmdlet binding issues
-3. **Session Management**: Implemented guaranteed cleanup with try/finally blocks
-4. **Driver Encoding**: Resolved UTF-8 BOM issues in generated batch files
-5. **Timeout Handling**: Added VM boot timeouts to prevent indefinite hangs
-6. **User Experience**: Interactive prompts for driver management decisions
+### Step 3: Run the EZ-GPU-PV Setup Wizard
 
-### Architecture Improvements
-- **Clean Code Principles**: Following Robert C. Martin's guidelines for maintainability
-- **Function Decomposition**: Broke monolithic script into focused, single-purpose functions
-- **Error Recovery**: Graceful handling of user cancellations and system errors
-- **Verbose Logging**: Optional detailed progress tracking for troubleshooting
+1. Open PowerShell as **Administrator**:
+   ```powershell
+   Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+   ```
+2. Navigate to the folder containing `ez-gpu-pv.ps1`:
+   ```powershell
+   cd "C:\Path\To\Script"
+   ```
+3. Run the script:
+   ```powershell
+   .\ez-gpu-pv.ps1
+   ```
+4. **Interactive Prompts:**
+   - **Select VM:** A graphical grid window will list all available VMs. Click your target VM and click **OK**.
+   - **Select GPU:** Choose your host graphics card from the grid.
+   - **Enter VM Credentials:** Input the local Administrator username and password for *inside* the guest VM.
+   - **Confirm Setup:** Review the configuration summary and type `Y` to apply.
 
-## Remote Gaming Setup
+---
 
-### Moonlight/Sunshine Integration
-To utilize your GPU-P enabled VM for remote gaming:
+### Step 4: Final Driver Installation Inside the VM
 
-1. **Install Sunshine** on your VM (server)
-2. **Install Moonlight** on your client device
-3. **Important**: Use the Hyper-V VM connection display adapter to prevent black screen issues
-4. **Configure**: Set up Sunshine with your GPU-P adapter as the primary display
+1. Start your Virtual Machine in Hyper-V Manager.
+2. Log in to Windows inside the VM.
+3. Open File Explorer and go to the root of the **C:\** drive.
+4. Locate `GPUPAdditionalSetup.bat`.
+5. **Right-click `GPUPAdditionalSetup.bat` → Run as administrator.**
+6. Wait for the command prompt to finish installing drivers into the VM's Driver Store.
+7. Restart the VM.
+8. **Verify GPU-P:** Open Task Manager inside the VM → **Performance** tab. You should now see your physical GPU listed!
 
-### Display Adapter Configuration
-**⚠️ Critical Note**: Moonlight requires an active display adapter before it can display anything. The Hyper-V VM connection provides this active adapter, while dedicated GPU adapters may cause black screens.
+---
 
-## Troubleshooting
+## 🔄 Reversing GPU Partitioning (`-Reverse`)
 
-### Critical Moonlight/Sunshine Issues
+If you want to remove GPU partitioning from a VM and restore standard Hyper-V defaults:
 
-#### Black Screen Problem (Most Common)
-**Root Cause**: Enhanced Session Mode creates a conflicting RDP display adapter that prevents Moonlight from capturing GPU output.
+1. Open PowerShell as Administrator.
+2. Run the script with the `-Reverse` flag:
+   ```powershell
+   .\ez-gpu-pv.ps1 -Reverse
+   ```
+3. **Reversal Wizard Steps:**
+   - **Select VM:** Pick the VM you want to restore.
+   - **Host Cleanup:** The script stops the VM, removes the GPU partition adapter, re-enables standard checkpoints, resets guest cache settings, and restores default MMIO memory space.
+   - **VM Driver Cleanup (Optional):** The wizard will ask if you also want to remove copied driver packages inside the VM (`HostDriverStore` and setup batch file). If you select `Y`, enter your VM credentials, and the script will automatically clean up the guest files!
 
-**Solution**:
-1. Disable Enhanced Session Mode in Hyper-V Settings
-2. Connect using Basic Session mode only
-3. Ensure GPU-P adapter is the primary display (not VM connection adapter)
+---
 
-#### Driver Conflicts
-**Symptoms**: Code 43 errors, GPU not recognized in Device Manager
-**Root Cause**: NVIDIA intentionally blocks consumer GPUs in virtualized environments
-**Solutions**:
-- Use community patches or workarounds for NVIDIA drivers
-- Verify driver compatibility with your specific GPU model
-- Check for VM-specific driver unlocks
+## 🎮 Remote Gaming Guide: Apollo + Moonlight
 
-### Script Execution Issues
+Hyper-V GPU-P VMs operate in a headless state (no physical monitor attached). Standard remote desktop tools like RDP disable GPU acceleration, while traditional streaming tools like Sunshine can encounter black screen errors due to missing display outputs.
 
-#### Common Runtime Errors
-- **"Cannot convert value to type"**: Parameter type mismatch - ensure numeric values for memory parameters
-- **"Parameter name is ambiguous"**: Truncated parameter names - use full parameter names
-- **"Session connection failed"**: Check VM credentials and network connectivity
-- **Timeout errors**: VM boot issues - verify integration services are enabled
+We strongly recommend using **[Apollo](https://github.com/ClassicOldSong/Apollo)** (a modern fork of Sunshine) paired with **[Moonlight](https://moonlight-stream.org/)** on your client devices.
 
-#### PowerShell-Specific Issues
-- **Execution Policy**: Run `Set-ExecutionPolicy RemoteSigned -Scope CurrentUser`
-- **File Unblocking**: Right-click script → Properties → Unblock checkbox
-- **Administrator Rights**: Required for Hyper-V operations
+### Why Apollo Over Sunshine for Hyper-V GPU-P?
 
-### Getting Help
-- Check the [Issues](../../issues) section for known problems
-- Review [usage.md](usage.md) for detailed troubleshooting steps
-- Ensure all prerequisites are met before running
-- Include error messages, Windows version, and GPU model when reporting issues
+* **Built-in SudoVDA Virtual Display Driver:** Apollo includes SudoVDA directly inside the installer. When a streaming session begins, Apollo automatically creates a virtual display monitor for your partitioned GPU and destroys it when you disconnect—**no physical dummy plugs or extra virtual display drivers required!**
+* **Automatic Resolution & Refresh Rate Matching:** Apollo dynamically matches the native resolution and framerate of your client device (e.g., Steam Deck 1280x800@60Hz, iPad 2732x2048@120Hz, or 4K TV@60Hz).
+* **Zero-Configuration Headless Streaming:** Fixes the Moonlight "Black Screen" problem out-of-the-box.
 
-## Known Limitations
+---
 
-- Requires Windows host with Hyper-V support
-- GPU-P performance varies by GPU model and driver version
-- Some GPU features may not be available in VMs
-- Remote gaming requires additional setup (Moonlight/Sunshine)
+### Step-by-Step Apollo Setup in the VM
 
-## Credits & Attribution
+#### Step 1: Install Apollo in the VM
+1. Inside your GPU-P enabled VM, open a browser and download the latest release from the [Apollo GitHub Releases](https://github.com/ClassicOldSong/Apollo/releases).
+2. Run the installer executable. Make sure the option to install **SudoVDA (Virtual Display Driver)** is checked.
+3. Finish the installation.
 
-### Original Development
-- **Original Work**: Forked from [seflerZ/oneclick-gpu-pv](https://github.com/seflerZ/oneclick-gpu-pv)
-- **Inspired by**: [dantmnf](https://gist.github.com/dantmnf/9bf9972c1ad49029cbdc2e40f1b7ac51)
-- **Ubuntu Implementation**: Inspired by [OlfillasOdikno](https://gist.github.com/OlfillasOdikno/f87a4444f00984625558dad053255ace)
+#### Step 2: Configure Apollo Web UI
+1. Open a browser inside the VM and go to `https://localhost:47990`.
+2. Create your admin username and password when prompted.
+3. Log in to the Apollo dashboard.
+4. Navigate to **Configuration** → **Audio/Video** and verify SudoVDA is detected as an active virtual display provider.
 
-### Technical Excellence
-- **Code Quality**: Following principles from "Clean Code" by Robert C. Martin
-- **PowerShell Standards**: Adhering to Microsoft PowerShell best practices
-- **Architecture**: Single-responsibility functions and modular design
+#### Step 3: Install Moonlight on Client Device
+Install the Moonlight app on your streaming client:
+* **Windows / macOS / Linux:** Download from [Moonlight Site](https://moonlight-stream.org/)
+* **Handhelds / Mobile:** Search for **Moonlight Game Streaming** on Google Play Store, iOS App Store, or SteamOS App Store.
 
-### Community & Testing
-- **Hyper-V Community**: Thanks to Hyper-V and virtualization communities
-- **PowerShell Community**: Thanks to PowerShell and scripting communities
-- **NVIDIA/AMD Communities**: Thanks for driver compatibility insights
-- **Moonlight/Sunshine Users**: Thanks for remote gaming integration feedback
-- **AI Assistance**: Thanks to Gemini for debugging and refactoring support
+#### Step 4: Pair & Stream
+1. Connect your client device to the same local network as your host PC / VM.
+2. Launch Moonlight on your client device. Your VM running Apollo will automatically appear in the host list.
+3. Click the VM icon in Moonlight. A 4-digit PIN will display on your client screen.
+4. Open the Apollo Web UI in your VM (`https://localhost:47990`), go to **Pin**, enter the 4-digit PIN, and click **Send**.
+5. Click your desktop or game in Moonlight to start streaming with full hardware GPU acceleration!
 
-### Development History
-This script evolved through extensive community feedback and real-world testing:
-- **6.1-6.5+ versions**: Progressive improvements in stability and usability
-- **Bug fixes**: Resolved 50+ reported issues and edge cases
-- **Performance**: Optimized for both gaming and professional workloads
-- **Documentation**: Comprehensive guides based on user experiences
+---
 
-## Contributing
+## ⚙️ Script Parameters Reference
 
-We welcome contributions! Please:
-1. Test your changes thoroughly
-2. Follow PowerShell best practices
-3. Update documentation for any user-facing changes
-4. Include test cases for new functionality
-5. Report issues with detailed reproduction steps
+`ez-gpu-pv.ps1` includes high-performance gaming & graphics allocations **by default out of the box**. Advanced users can optionally customize resource allocations:
 
-## License
+| Parameter | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `-PartitionVram` | `long` | `1GB` | Amount of VRAM assigned to the GPU partition. |
+| `-PartitionEncode` | `long` | `500MB` | Video encoding resources allocated to partition. |
+| `-PartitionDecode` | `long` | `500MB` | Video decoding resources allocated to partition. |
+| `-PartitionCompute` | `long` | `500MB` | General GPU compute resources allocated. |
+| `-LowMmioSpace` | `long` | `1GB` | Low Memory Mapped I/O space reserved for VM. |
+| `-HighMmioSpace` | `long` | `32GB` | High Memory Mapped I/O space reserved for VM. |
+| `-VmBootTimeoutSeconds` | `int` | `300` | Timeout in seconds waiting for VM startup heartbeat. |
+| `-SkipDriverCopy` | `switch` | `False` | Skips checking and transferring host GPU drivers to VM. |
+| `-Reverse` | `switch` | `False` | Triggers the Reversal Wizard to undo GPU-P settings. |
 
-This project maintains the same license as the original repository and is provided as-is for educational and practical use in virtualization scenarios.
+### Usage Examples
+
+**Default (High-Performance Gaming / Graphics):**
+```powershell
+.\ez-gpu-pv.ps1
+```
+
+**Fast Re-run (Skip Driver Transfer):**
+```powershell
+.\ez-gpu-pv.ps1 -SkipDriverCopy
+```
+
+**Custom / Higher VRAM Allocation (e.g. 2GB VRAM):**
+```powershell
+.\ez-gpu-pv.ps1 -PartitionVram 2GB -PartitionEncode 1GB
+```
+
+**Reverse GPU-P and Restore Hyper-V Defaults:**
+```powershell
+.\ez-gpu-pv.ps1 -Reverse
+```
+
+---
+
+## 🔧 Troubleshooting
+
+### 1. Script Fails with "Execution of scripts is disabled on this system"
+Run this command in PowerShell (Administrator) to allow local scripts to execute:
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+
+### 2. "File unblocking" Warning
+If Windows blocks downloaded files, right-click `ez-gpu-pv.ps1` → **Properties** → check **Unblock** → click **Apply**.
+
+### 3. GPU Shows "Code 43" in VM Device Manager
+* **Cause:** NVIDIA consumer drivers historically restricted virtualized usage.
+* **Fix:** Ensure you ran `GPUPAdditionalSetup.bat` as Administrator inside the VM and restarted. Also verify that host and VM display driver versions match.
+
+### 4. Moonlight Streaming Shows a Black Screen
+* **Cause:** Headless VM has no active display output.
+* **Fix:** Switch from Sunshine to **Apollo**. Apollo's integrated SudoVDA virtual display driver creates a virtual monitor on demand, eliminating black screen issues without physical dummy plugs.
+
+### 5. Script Hangs on "Waiting for VM Heartbeat"
+* **Cause:** Integration services are disabled or guest OS is failing to boot.
+* **Fix:** Open Hyper-V Manager, connect to the VM manually, and ensure Windows is booting up cleanly to the desktop. Check VM Settings → Integration Services → Heartbeat.
+
+### 6. VM Fails to Start with Error "Insufficient system resources exist" (0x800705AA)
+* **Cause:** The minimum VRAM/resource reservation setting was too high for the host GPU to guarantee strictly upfront at boot time.
+* **Fix:** `ez-gpu-pv.ps1` automatically sets `MinPartition` parameters to `1` so Hyper-V dynamically allocates resources up to your requested maximum without throwing reservation errors on startup. Re-run `.\ez-gpu-pv.ps1` to apply the updated configuration.
+
+---
+
+## 🙏 Credits & Acknowledgments
+
+* Forked and refactored from original works by [seflerZ/oneclick-gpu-pv](https://github.com/seflerZ/oneclick-gpu-pv) and [dantmnf](https://gist.github.com/dantmnf/9bf9972c1ad49029cbdc2e40f1b7ac51).
+
+---
+
+## 📄 License
+
+This project is licensed under the [GNU General Public License v3.0 (GPLv3)](https://www.gnu.org/licenses/gpl-3.0.html).

@@ -1,0 +1,19 @@
+# Temp text files and debug outputs
+*.txt
+debug_output.txt
+devices_debug.txt
+vms_list.txt
+vhdx_path.txt
+
+# Log files
+*.log
+
+# IDE & Editor folders
+.vscode/
+.vs/
+*.suo
+*.user
+
+# Personal / scratch directories
+DegenScrape/
+codex_agents_ui*.md

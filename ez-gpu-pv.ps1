@@ -1,81 +1,113 @@
 #Requires -RunAsAdministrator
 <#
 .SYNOPSIS
-    Configures a Hyper-V Virtual Machine for GPU Partitioning (GPU-P).
+    Configures or reverses Hyper-V Virtual Machine GPU Partitioning (GPU-P).
 .DESCRIPTION
-    This script automates the process of assigning a physical GPU partition to a VM. It guides the user
-    through selecting a VM and GPU, prepares the VM, injects the necessary host drivers, and configures
-    the VM settings for GPU-P. It follows the principles of Clean Code for clarity and maintainability.
-.NOTES
-    Version: 6.5 (Approved verbs, robust VM stop)
-    Inspired by the principles in "Clean Code" by Robert C. Martin.
+    Automates assigning host GPU partitions to Hyper-V virtual machines or undoing GPU-P.
+    Includes host driver copying, VM configuration, and automated cleanup.
+.PARAMETER PartitionVram
+    Amount of VRAM assigned to the GPU partition (default: 1GB).
+.PARAMETER PartitionEncode
+    Amount of Encode resources assigned to the GPU partition (default: 500MB).
+.PARAMETER PartitionDecode
+    Amount of Decode resources assigned to the GPU partition (default: 500MB).
+.PARAMETER PartitionCompute
+    Amount of Compute resources assigned to the GPU partition (default: 500MB).
+.PARAMETER LowMmioSpace
+    Low Memory Mapped I/O space reserved for the VM (default: 1GB).
+.PARAMETER HighMmioSpace
+    High Memory Mapped I/O space reserved for the VM (default: 32GB).
+.PARAMETER VmBootTimeoutSeconds
+    Timeout in seconds waiting for VM heartbeat during startup (default: 300).
+.PARAMETER SkipDriverCopy
+    Skips checking and copying GPU drivers to the VM (useful if drivers were already copied).
+.PARAMETER Reverse
+    Reverses GPU Partitioning on the selected VM and restores Hyper-V defaults.
 #>
 
 [CmdletBinding()]
 param(
-    # The amount of VRAM to assign to the GPU partition in bytes.
-    [long]$PartitionVram = 100MB,
-    # The amount of Encode resources to assign to the GPU partition in bytes.
-    [long]$PartitionEncode = 100MB,
-    # The amount of Decode resources to assign to the GPU partition in bytes.
-    [long]$PartitionDecode = 100MB,
-    # The amount of Compute resources to assign to the GPU partition in bytes.
-    [long]$PartitionCompute = 100MB,
-    # MODIFICATION: Changed type to [long] and value to a numeric literal.
-    # The amount of Low Memory Mapped I/O space to reserve for the VM.
+    [long]$PartitionVram = 1GB,
+    [long]$PartitionEncode = 500MB,
+    [long]$PartitionDecode = 500MB,
+    [long]$PartitionCompute = 500MB,
     [long]$LowMmioSpace = 1GB,
-    # The amount of High Memory Mapped I/O space to reserve for the VM.
     [long]$HighMmioSpace = 32GB,
-    # The timeout in seconds to wait for the VM to boot and respond to a heartbeat.
-    [int]$VmBootTimeoutSeconds = 300
+    [int]$VmBootTimeoutSeconds = 300,
+    [switch]$SkipDriverCopy,
+    [switch]$Reverse
 )
 
-# Stop on any error
 $ErrorActionPreference = "Stop"
 
-#region Functions
-function Get-VMSession {
+#region Helper Functions
+
+function Show-Header {
     [CmdletBinding()]
-    param(
-        [int]$TimeoutSeconds
-    )
-    Write-Verbose "Selecting Virtual Machine..."
-    $selectedVM = Get-VM | Out-GridView -Title "Select VM to setup GPU-P" -OutputMode Single
-    if (-not $selectedVM) {
-        Write-Warning "VM selection was canceled. Script will now exit."
-        return $null
-    }
+    param([string]$Title)
 
-    Write-Host "Please enter the credentials for an Administrator account INSIDE the VM '$($selectedVM.VMName)'." -ForegroundColor Yellow
-    $vmAdminCredential = Get-Credential
-
-    Initialize-VMForDriverInjection -VM $selectedVM -TimeoutSeconds $TimeoutSeconds
-
-    Write-Verbose "Establishing PowerShell session to VM..."
-    $vmSession = New-PSSession -VMId $selectedVM.VMId -Credential $vmAdminCredential
-    
-    return @{ VM = $selectedVM; Session = $vmSession }
+    Clear-Host
+    Write-Host "==========================================================" -ForegroundColor Cyan
+    Write-Host "                EZ-GPU-PV WIZARD                          " -ForegroundColor Cyan
+    Write-Host "   $Title" -ForegroundColor Yellow
+    Write-Host "==========================================================" -ForegroundColor Cyan
+    Write-Host ""
 }
 
-function Initialize-VMForDriverInjection {
+function Show-Step {
+    [CmdletBinding()]
+    param(
+        [int]$StepNumber,
+        [int]$TotalSteps,
+        [string]$Message
+    )
+    Write-Host "`n[$StepNumber/$TotalSteps] $Message" -ForegroundColor Green
+}
+
+function Select-TargetVM {
+    [CmdletBinding()]
+    param([string]$Title = "Select Virtual Machine")
+
+    Write-Verbose "Querying Hyper-V Virtual Machines..."
+    $vm = Get-VM | Out-GridView -Title $Title -OutputMode Single
+    if (-not $vm) {
+        Write-Warning "VM selection was canceled. Exiting wizard."
+        return $null
+    }
+    return $vm
+}
+
+function Stop-VMWithWait {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [Microsoft.HyperV.PowerShell.VirtualMachine]$VM
+    )
+
+    if ($VM.State -ne 'Off') {
+        Write-Verbose "Stopping VM '$($VM.VMName)'..."
+        $VM | Stop-VM -Force -ErrorAction SilentlyContinue
+        
+        $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+        while ((Get-VM -Id $VM.VMId).State -ne 'Off') {
+            if ($stopwatch.Elapsed.TotalSeconds -ge 60) {
+                throw "Failed to stop VM '$($VM.VMName)' within 60 seconds."
+            }
+            Start-Sleep -Seconds 2
+        }
+        $stopwatch.Stop()
+    }
+}
+
+function Wait-VMHeartbeat {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
         [Microsoft.HyperV.PowerShell.VirtualMachine]$VM,
         [int]$TimeoutSeconds
     )
-    Write-Verbose "Stopping VM '$($VM.VMName)'..."
-    $VM | Stop-VM -Force -ErrorAction SilentlyContinue
-    Write-Verbose "Disabling checkpoints..."
-    $VM | Set-VM -CheckpointType Disabled
-    Write-Verbose "Enabling heartbeat service..."
-    $VM | Enable-VMIntegrationService -Name "Heartbeat"
-    if ($VM | Get-VMGpuPartitionAdapter) {
-        Write-Warning "Removing existing GPU partition adapter from VM."
-        $VM | Remove-VMGpuPartitionAdapter
-    }
 
-    Write-Verbose "Starting VM to prepare for driver injection..."
+    Write-Verbose "Starting VM '$($VM.VMName)'..."
     $VM | Start-VM
 
     Write-Verbose "Waiting for VM heartbeat (Timeout: $TimeoutSeconds seconds)..."
@@ -91,14 +123,21 @@ function Initialize-VMForDriverInjection {
     Write-Verbose "VM heartbeat is OK."
 }
 
-function Get-PartitionableGpu {
+function Get-VMAdminCredential {
+    [CmdletBinding()]
+    param([string]$VMName)
+
+    Write-Host "Please enter Administrator credentials for INSIDE the VM '$VMName':" -ForegroundColor Yellow
+    return Get-Credential
+}
+
+function Select-PartitionableGpu {
     [CmdletBinding()]
     param()
 
-    Write-Verbose "Selecting host GPU for partitioning..."
-    $selectedGpu = Get-PnpDevice -Class Display -Status OK | Out-GridView -Title "Select Host GPU to partition" -OutputMode Single
+    $selectedGpu = Get-PnpDevice -Class Display -Status OK | Out-GridView -Title "Select Host GPU for GPU-P" -OutputMode Single
     if (-not $selectedGpu) {
-        Write-Warning "GPU selection was canceled. Script will now exit."
+        Write-Warning "GPU selection was canceled. Exiting wizard."
         return $null
     }
 
@@ -114,13 +153,8 @@ function Get-PartitionableGpu {
     }
 
     if (-not $instancePath) {
-        throw "Could not find a partitionable instance path for the selected GPU: $($selectedGpu.FriendlyName)."
+        throw "Could not find a partitionable instance path for GPU '$($selectedGpu.FriendlyName)'."
     }
-
-    Write-Host "`n============================" -ForegroundColor Green
-    Write-Host "Using GPU: $($selectedGpu.FriendlyName)"
-    Write-Host "Instance Path: $instancePath"
-    Write-Host "============================" -ForegroundColor Green
 
     return @{ GpuDevice = $selectedGpu; InstancePath = $instancePath }
 }
@@ -133,32 +167,34 @@ function Copy-GpuDriverPackage {
         [Parameter(Mandatory = $true)]
         [psobject]$GpuDevice
     )
-    Write-Verbose "Getting driver details for selected GPU..."
+
     $pnpProperties = $GpuDevice | Get-PnpDeviceProperty
     $infPath = ($pnpProperties | Where-Object { $_.KeyName -eq "DEVPKEY_Device_DriverInfPath" }).Data
     $infSection = ($pnpProperties | Where-Object { $_.KeyName -eq "DEVPKEY_Device_DriverInfSection" }).Data
     $driverStorePath = (Get-WindowsDriver -Online | Where-Object { $_.Driver -eq $infPath }).OriginalFileName
 
     if (-not $driverStorePath) {
-        throw "Could not find the driver package for '$($GpuDevice.FriendlyName)'. This device may not be supported."
+        throw "Driver package for '$($GpuDevice.FriendlyName)' could not be located."
     }
 
     $driverPackageDirectory = (Get-Item -LiteralPath $driverStorePath).Directory
-    
     $remoteDriverStore = "$($env:SystemRoot)\System32\HostDriverStore\FileRepository"
     $remoteDriverPackagePath = Join-Path $remoteDriverStore $driverPackageDirectory.Name
 
-    if (Invoke-Command -Session $Session -ScriptBlock { Test-Path -Path $using:remoteDriverPackagePath }) {
-        Write-Verbose "Driver package '$($driverPackageDirectory.Name)' already exists in the VM. Skipping copy."
-        return $false # Indicates that a setup script was NOT written
+    Write-Verbose "Clearing old HostDriverStore in VM to ensure a clean driver installation..."
+    Invoke-Command -Session $Session -ScriptBlock {
+        Remove-Item -Path "$($env:SystemRoot)\System32\HostDriverStore" -Recurse -Force -ErrorAction SilentlyContinue
     }
 
-    Write-Verbose "Copying driver package '$($driverPackageDirectory.Name)' to VM..."
-    Invoke-Command -Session $Session -ScriptBlock { New-Item -ItemType Directory -Path $using:remoteDriverStore -Force | Out-Null }
+    Write-Verbose "Copying GPU drivers to VM..."
+    Invoke-Command -Session $Session -ScriptBlock {
+        New-Item -ItemType Directory -Path $using:remoteDriverStore -Force | Out-Null
+    }
     Copy-Item -LiteralPath $driverPackageDirectory.FullName -ToSession $Session -Destination $remoteDriverStore -Recurse -Force
-    
-    Write-Verbose "Creating driver setup script inside the VM..."
-    $remoteInfPath = Join-Path $remoteDriverPackagePath (Split-Path $infPath -Leaf)
+
+    Write-Verbose "Writing driver setup script inside VM..."
+    $remoteInfFileName = Split-Path $driverStorePath -Leaf
+    $remoteInfPath = Join-Path $remoteDriverPackagePath $remoteInfFileName
     Invoke-Command -Session $Session -ScriptBlock {
         $batContent = @"
 @echo off
@@ -167,16 +203,17 @@ cd /d %TEMP%
 set "dirname=gpup_setup_%RANDOM%"
 mkdir %dirname%
 cd %dirname%
+pnputil /add-driver "$using:remoteInfPath" /install >nul 2>&1
 start "" /wait rundll32 advpack.dll,LaunchINFSectionEx "$using:remoteInfPath,$using:infSection,,4"
 cd ..
 rmdir /s /q %dirname%
-echo Done.
+echo Driver setup completed.
 pause
 "@
-        Set-Content -LiteralPath "$env:SystemDrive\GPUPAdditionalSetup.bat" -Encoding utf8 -Value $batContent
+        Set-Content -LiteralPath "$env:SystemDrive\GPUPAdditionalSetup.bat" -Encoding Ascii -Value $batContent
     }
 
-    return $true # Indicates that a setup script WAS written
+    return $true
 }
 
 function Set-VMGpuConfiguration {
@@ -190,86 +227,198 @@ function Set-VMGpuConfiguration {
         [long]$Encode,
         [long]$Decode,
         [long]$Compute,
-        # MODIFICATION: Changed types from [string] to [long] to match the caller.
         [long]$LowMmio,
         [long]$HighMmio
     )
-    Write-Verbose "Configuring GPU-P for VM..."
+
     $VM | Add-VMGpuPartitionAdapter -InstancePath $GpuInstancePath
 
     $gpuAdapterParams = @{
-        MinPartitionVRAM        = $Vram
+        MinPartitionVRAM        = 1
         MaxPartitionVRAM        = $Vram
         OptimalPartitionVRAM    = $Vram
-        MinPartitionEncode      = $Encode
+        MinPartitionEncode      = 1
         MaxPartitionEncode      = $Encode
         OptimalPartitionEncode  = $Encode
-        MinPartitionDecode      = $Decode
+        MinPartitionDecode      = 1
         MaxPartitionDecode      = $Decode
         OptimalPartitionDecode  = $Decode
-        MinPartitionCompute     = $Compute
+        MinPartitionCompute     = 1
         MaxPartitionCompute     = $Compute
         OptimalPartitionCompute = $Compute
     }
+
     $VM | Set-VMGpuPartitionAdapter @gpuAdapterParams
     $VM | Set-VM -GuestControlledCacheTypes $true -LowMemoryMappedIoSpace $LowMmio -HighMemoryMappedIoSpace $HighMmio
 }
 
-function Write-PostSetupInstructions {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]
-        [Microsoft.HyperV.PowerShell.VirtualMachine]$VM,
-        [bool]$ScriptWasWritten
-    )
-    Write-Host "`nDone." -ForegroundColor Green
-    if ($ScriptWasWritten) {
-        Write-Host "A setup file was created in the VM. You must now:"
-        Write-Host "1. Start the VM '$($VM.VMName)'."
-        Write-Host "2. Log in and run 'GPUPAdditionalSetup.bat' from the C: drive as an Administrator."
-    } else {
-        Write-Host "You can now start the VM '$($VM.VMName)'."
-    }
-}
 #endregion
 
-# --- Main Script Workflow ---
-$vmContext = $null
-try {
-    # 1. Select VM and establish a remote session
-    $vmContext = Get-VMSession -TimeoutSeconds $VmBootTimeoutSeconds
-    if (-not $vmContext) { return } # User canceled
+#region Workflows
 
-    # 2. Select the host GPU to partition
-    $gpuInfo = Get-PartitionableGpu
-    if (-not $gpuInfo) { return } # User canceled
+function Invoke-GpuPartitionSetup {
+    Show-Header -Title "Setup Mode (Enable GPU-P)"
 
-    # 3. Copy drivers to the VM if they don't already exist
-    $scriptWasWritten = Copy-GpuDriverPackage -Session $vmContext.Session -GpuDevice $gpuInfo.GpuDevice
+    # Step 1: VM Selection
+    Show-Step -StepNumber 1 -TotalSteps 4 -Message "Selecting target Virtual Machine..."
+    $vm = Select-TargetVM -Title "Select VM to enable GPU-P"
+    if (-not $vm) { return }
 
-}
-finally {
-    # 4. Clean up the remote session and stop the VM for final configuration
-    if ($vmContext.Session) {
-        Write-Verbose "Closing PSSession to the VM..."
-        Remove-PSSession $vmContext.Session
+    # Step 2: GPU Selection
+    Show-Step -StepNumber 2 -TotalSteps 4 -Message "Selecting host GPU..."
+    $gpuInfo = Select-PartitionableGpu
+    if (-not $gpuInfo) { return }
+
+    # Summary & Confirmation
+    Write-Host "`nSummary of configuration to apply:" -ForegroundColor Yellow
+    Write-Host "  VM Name:       $($vm.VMName)"
+    Write-Host "  GPU Name:      $($gpuInfo.GpuDevice.FriendlyName)"
+    Write-Host "  Partition VRAM: $($PartitionVram / 1MB) MB"
+    Write-Host "  Low MMIO:      $($LowMmioSpace / 1MB) MB"
+    Write-Host "  High MMIO:     $($HighMmioSpace / 1GB) GB"
+    
+    $confirm = Read-Host "`nDo you want to proceed with GPU-P setup? (Y/N)"
+    if ($confirm -notmatch '^(y|yes)$') {
+        Write-Warning "Operation canceled by user."
+        return
     }
-    if ($vmContext.VM) {
-        Write-Verbose "Stopping VM for final configuration..."
-        $vmContext.VM | Stop-VM -Force -ErrorAction SilentlyContinue
+
+    # Step 3: Driver Copy & VM Initialization
+    Show-Step -StepNumber 3 -TotalSteps 4 -Message "Preparing VM and transferring GPU drivers..."
+    Stop-VMWithWait -VM $vm
+    $vm | Set-VM -CheckpointType Disabled
+    $vm | Enable-VMIntegrationService -Name "Heartbeat"
+
+    if ($vm | Get-VMGpuPartitionAdapter) {
+        Write-Verbose "Removing existing GPU partition adapter..."
+        $vm | Remove-VMGpuPartitionAdapter
+    }
+
+    $scriptWritten = $false
+    if ($SkipDriverCopy) {
+        Write-Host "  [*] -SkipDriverCopy specified. Skipping VM remote driver transfer." -ForegroundColor Cyan
+    } else {
+        $cred = Get-VMAdminCredential -VMName $vm.VMName
+        Wait-VMHeartbeat -VM $vm -TimeoutSeconds $VmBootTimeoutSeconds
+
+        $session = $null
+        try {
+            $session = New-PSSession -VMId $vm.VMId -Credential $cred
+            $scriptWritten = Copy-GpuDriverPackage -Session $session -GpuDevice $gpuInfo.GpuDevice
+        }
+        finally {
+            if ($session) {
+                Remove-PSSession $session
+            }
+            Stop-VMWithWait -VM $vm
+        }
+    }
+
+    # Step 4: Host GPU-P Configuration
+    Show-Step -StepNumber 4 -TotalSteps 4 -Message "Applying GPU partition settings..."
+    Set-VMGpuConfiguration `
+        -VM $vm `
+        -GpuInstancePath $gpuInfo.InstancePath `
+        -Vram $PartitionVram `
+        -Encode $PartitionEncode `
+        -Decode $PartitionDecode `
+        -Compute $PartitionCompute `
+        -LowMmio $LowMmioSpace `
+        -HighMmio $HighMmioSpace
+
+    # Completion Instructions
+    Write-Host "`n==========================================================" -ForegroundColor Green
+    Write-Host "  GPU Partitioning successfully configured for '$($vm.VMName)'!" -ForegroundColor Green
+    Write-Host "==========================================================" -ForegroundColor Green
+    if ($scriptWritten) {
+        Write-Host "Next steps inside the VM:" -ForegroundColor Yellow
+        Write-Host "  1. Start VM '$($vm.VMName)'."
+        Write-Host "  2. Log in and right-click 'C:\GPUPAdditionalSetup.bat' -> Run as administrator."
+        Write-Host "  3. Reboot the VM after driver installation finishes."
+    } else {
+        Write-Host "Setup complete. You can now boot your VM '$($vm.VMName)'." -ForegroundColor Yellow
     }
 }
 
-# 5. Apply the GPU and memory settings to the VM
-Set-VMGpuConfiguration `
-    -VM $vmContext.VM `
-    -GpuInstancePath $gpuInfo.InstancePath `
-    -Vram $PartitionVram `
-    -Encode $PartitionEncode `
-    -Decode $PartitionDecode `
-    -Compute $PartitionCompute `
-    -LowMmio $LowMmioSpace `
-    -HighMmio $HighMmioSpace
+function Invoke-GpuPartitionReversal {
+    Show-Header -Title "Reversal Mode (Disable GPU-P & Restore Defaults)"
 
-# 6. Display final instructions to the user
-Write-PostSetupInstructions -VM $vmContext.VM -ScriptWasWritten $scriptWasWritten
+    # Step 1: Select VM
+    Show-Step -StepNumber 1 -TotalSteps 3 -Message "Selecting Target VM to reverse GPU-P..."
+    $vm = Select-TargetVM -Title "Select VM to remove GPU-P"
+    if (-not $vm) { return }
+
+    $confirm = Read-Host "`nAre you sure you want to remove GPU-P settings from '$($vm.VMName)'? (Y/N)"
+    if ($confirm -notmatch '^(y|yes)$') {
+        Write-Warning "Operation canceled by user."
+        return
+    }
+
+    # Step 2: Remove Partition Adapter & Restore Hyper-V Defaults
+    Show-Step -StepNumber 2 -TotalSteps 3 -Message "Restoring host-side VM settings..."
+    Stop-VMWithWait -VM $vm
+
+    if ($vm | Get-VMGpuPartitionAdapter) {
+        $vm | Remove-VMGpuPartitionAdapter
+        Write-Host "  [+] Removed GPU Partition Adapter" -ForegroundColor Cyan
+    } else {
+        Write-Host "  [*] No GPU Partition Adapter found on VM" -ForegroundColor Gray
+    }
+
+    # Restore default VM settings (Standard Checkpoints, Disabled Cache Types, Standard MMIO)
+    $vm | Set-VM -CheckpointType Standard -GuestControlledCacheTypes $false -LowMemoryMappedIoSpace 128MB -HighMemoryMappedIoSpace 512MB
+    Write-Host "  [+] Restored Checkpoints to Standard" -ForegroundColor Cyan
+    Write-Host "  [+] Restored GuestControlledCacheTypes to false" -ForegroundColor Cyan
+    Write-Host "  [+] Restored MMIO spaces (Low: 128MB, High: 512MB)" -ForegroundColor Cyan
+
+    # Step 3: Optional Driver Cleanup inside VM
+    Show-Step -StepNumber 3 -TotalSteps 3 -Message "VM Driver Cleanup Option"
+    $cleanVM = Read-Host "Do you want to delete host driver files inside the VM? (Y/N)"
+    
+    if ($cleanVM -match '^(y|yes)$') {
+        try {
+            $cred = Get-VMAdminCredential -VMName $vm.VMName
+            Write-Host "Starting VM to perform driver cleanup..." -ForegroundColor Yellow
+            Wait-VMHeartbeat -VM $vm -TimeoutSeconds $VmBootTimeoutSeconds
+            
+            $session = New-PSSession -VMId $vm.VMId -Credential $cred
+            try {
+                Invoke-Command -Session $session -ScriptBlock {
+                    $storePath = "$($env:SystemRoot)\System32\HostDriverStore"
+                    $batPath = "$env:SystemDrive\GPUPAdditionalSetup.bat"
+                    
+                    if (Test-Path $storePath) {
+                        Remove-Item -Path $storePath -Recurse -Force -ErrorAction SilentlyContinue
+                        Write-Host "  [+] Removed HostDriverStore inside VM"
+                    }
+                    if (Test-Path $batPath) {
+                        Remove-Item -Path $batPath -Force -ErrorAction SilentlyContinue
+                        Write-Host "  [+] Removed GPUPAdditionalSetup.bat inside VM"
+                    }
+                }
+            }
+            finally {
+                Remove-PSSession $session
+                Stop-VMWithWait -VM $vm
+            }
+        }
+        catch {
+            Write-Warning "Could not complete inside-VM driver cleanup: $_"
+        }
+    } else {
+        Write-Host "Skipping inside-VM driver cleanup." -ForegroundColor Gray
+    }
+
+    Write-Host "`n==========================================================" -ForegroundColor Green
+    Write-Host "  GPU Partition Reversal Complete for '$($vm.VMName)'!" -ForegroundColor Green
+    Write-Host "==========================================================" -ForegroundColor Green
+}
+
+#endregion
+
+# --- Main Entry Point ---
+if ($Reverse) {
+    Invoke-GpuPartitionReversal
+} else {
+    Invoke-GpuPartitionSetup
+}
